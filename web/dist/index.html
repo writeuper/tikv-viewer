@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TiKV Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#10B981',
+                        neutral: '#1F2937',
+                        "neutral-light": '#F3F4F6',
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .transition-all-300 {
+                transition: all 300ms ease-in-out;
+            }
+            .card-hover {
+                @apply hover:shadow-lg hover:-translate-y-1 transition-all duration-300;
+            }
+        }
+    </style>
+</head>
+<body class="font-inter bg-gray-50 min-h-screen flex flex-col">
+<!-- 顶部导航栏 -->
+<header class="bg-white shadow-sm sticky top-0 z-50">
+    <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+        <div class="flex items-center space-x-2">
+            <i class="fa-brands fa-connectdevelop text-primary text-2xl"></i>
+            <h1 class="text-xl font-bold text-neutral">TiKV Viewer</h1>
+        </div>
+        <div class="flex items-center space-x-4">
+            <button id="refreshBtn" class="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg transition-all-300 flex items-center">
+                <i class="fa-solid fa-refresh mr-2"></i>刷新
+            </button>
+            <button id="settingsBtn" class="text-neutral hover:text-primary transition-all-300">
+                <i class="fa-solid fa-cog text-xl"></i>
+            </button>
+        </div>
+    </div>
+</header>
+
+<!-- 主内容区 -->
+<main class="flex-grow container mx-auto px-4 py-6">
+    <!-- 连接信息卡片 -->
+    <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-neutral">连接信息</h2>
+            <span id="connectionStatus" class="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                    <i class="fa-solid fa-check-circle mr-1"></i>已连接
+                </span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-neutral-light rounded-lg p-4">
+                <div class="text-sm text-gray-500 mb-1">集群地址</div>
+                <div class="font-medium" id="clusterAddress">127.0.0.1:2379</div>
+            </div>
+            <div class="bg-neutral-light rounded-lg p-4">
+                <div class="text-sm text-gray-500 mb-1">键总数</div>
+                <div class="font-medium" id="totalKeys">-</div>
+            </div>
+            <div class="bg-neutral-light rounded-lg p-4">
+                <div class="text-sm text-gray-500 mb-1">上次更新</div>
+                <div class="font-medium" id="lastUpdate">-</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 操作区 -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <!-- 键值操作卡片 -->
+        <div class="bg-white rounded-xl shadow-sm p-6 card-hover">
+            <h2 class="text-lg font-semibold text-neutral mb-4 flex items-center">
+                <i class="fa-solid fa-key text-primary mr-2"></i>键值操作
+            </h2>
+            <div class="space-y-4">
+                <div>
+                    <label for="keyInput" class="block text-sm font-medium text-gray-700 mb-1">键</label>
+                    <input type="text" id="keyInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all-300" placeholder="输入键名称">
+                </div>
+                <div>
+                    <label for="valueInput" class="block text-sm font-medium text-gray-700 mb-1">值</label>
+                    <textarea id="valueInput" rows="4" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all-300" placeholder="输入值内容"></textarea>
+                </div>
+                <div class="flex space-x-2">
+                    <button id="getValueBtn" class="flex-1 bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg transition-all-300 flex items-center justify-center">
+                        <i class="fa-solid fa-search mr-2"></i>获取
+                    </button>
+                    <button id="setValueBtn" class="flex-1 bg-secondary hover:bg-secondary/90 text-white px-4 py-2 rounded-lg transition-all-300 flex items-center justify-center">
+                        <i class="fa-solid fa-save mr-2"></i>设置
+                    </button>
+                    <button id="deleteValueBtn" class="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-all-300 flex items-center justify-center">
+                        <i class="fa-solid fa-trash mr-2"></i>删除
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 扫描操作卡片 -->
+        <div class="bg-white rounded-xl shadow-sm p-6 card-hover">
+            <h2 class="text-lg font-semibold text-neutral mb-4 flex items-center">
+                <i class="fa-solid fa-search text-primary mr-2"></i>范围扫描
+            </h2>
+            <div class="space-y-4">
+                <div>
+                    <label for="startKeyInput" class="block text-sm font-medium text-gray-700 mb-1">起始键</label>
+                    <input type="text" id="startKeyInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all-300" placeholder="输入起始键">
+                </div>
+                <div>
+                    <label for="endKeyInput" class="block text-sm font-medium text-gray-700 mb-1">结束键</label>
+                    <input type="text" id="endKeyInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all-300" placeholder="输入结束键（留空则扫描到最后）">
+                </div>
+                <div>
+                    <label for="limitInput" class="block text-sm font-medium text-gray-700 mb-1">数量限制</label>
+                    <input type="number" id="limitInput" value="100" min="1" max="1000" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all-300">
+                </div>
+                <button id="scanBtn" class="w-full bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg transition-all-300 flex items-center justify-center">
+                    <i class="fa-solid fa-search-plus mr-2"></i>扫描
+                </button>
+            </div>
+        </div>
+
+        <!-- 统计信息卡片 -->
+        <div class="bg-white rounded-xl shadow-sm p-6 card-hover">
+            <h2 class="text-lg font-semibold text-neutral mb-4 flex items-center">
+                <i class="fa-solid fa-chart-pie text-primary mr-2"></i>集群统计
+            </h2>
+            <div class="space-y-4">
+                <div class="h-64">
+                    <canvas id="statsChart"></canvas>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-neutral-light rounded-lg p-3">
+                        <div class="text-xs text-gray-500 mb-1">存储大小</div>
+                        <div class="font-medium text-lg" id="storageSize">-</div>
+                    </div>
+                    <div class="bg-neutral-light rounded-lg p-3">
+                        <div class="text-xs text-gray-500 mb-1">Region数量</div>
+                        <div class="font-medium text-lg" id="regionCount">-</div>
+                    </div>
+                    <div class="bg-neutral-light rounded-lg p-3">
+                        <div class="text-xs text-gray-500 mb-1">TiKV节点</div>
+                        <div class="font-medium text-lg" id="tikvNodes">-</div>
+                    </div>
+                    <div class="bg-neutral-light rounded-lg p-3">
+                        <div class="text-xs text-gray-500 mb-1">QPS</div>
+                        <div class="font-medium text-lg" id="qps">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 键值列表 -->
+    <div class="bg-white rounded-xl shadow-sm p-6">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-semibold text-neutral flex items-center">
+                <i class="fa-solid fa-list text-primary mr-2"></i>键值列表
+            </h2>
+            <div class="flex items-center space-x-2">
+                <div class="relative">
+                    <input type="text" id="searchKeyInput" placeholder="搜索键..." class="pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all-300">
+                    <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                </div>
+                <select id="valueTypeSelect" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all-300">
+                    <option value="all">所有类型</option>
+                    <option value="string">字符串</option>
+                    <option value="json">JSON</option>
+                    <option value="number">数字</option>
+                </select>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                <tr>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">键</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">值类型</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">值预览</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">大小</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                </tr>
+                </thead>
+                <tbody id="keyValueTableBody" class="bg-white divide-y divide-gray-200">
+                <!-- 数据将通过JavaScript动态填充 -->
+                <tr class="text-center">
+                    <td colspan="5" class="px-6 py-10 text-gray-500">
+                        <div class="flex flex-col items-center">
+                            <i class="fa-solid fa-database text-4xl mb-3 text-gray-300"></i>
+                            <p>暂无数据</p>
+                            <p class="text-sm mt-1">请使用上方的扫描功能查找键值</p>
+                        </div>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="mt-4 flex justify-between items-center">
+            <div class="text-sm text-gray-500" id="paginationInfo">显示 0-0 条，共 0 条</div>
+            <div class="flex space-x-2">
+                <button id="prevPageBtn" disabled class="px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed">上一页</button>
+                <button id="nextPageBtn" disabled class="px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed">下一页</button>
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- 页脚 -->
+<footer class="bg-white border-t border-gray-200 py-4">
+    <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
+        <p>TiKV Viewer &copy; 2023 | 基于Go和TiKV Client</p>
+    </div>
+</footer>
+
+<!-- 查看/编辑键值的模态框 -->
+<div id="keyValueModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+            <h3 class="text-lg font-semibold text-neutral" id="modalTitle">查看键值</h3>
+            <button id="closeModalBtn" class="text-gray-400 hover:text-gray-500">
+                <i class="fa-solid fa-times text-xl"></i>
+            </button>
+        </div>
+        <div class="p-6">
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">键</label>
+                <input type="text" id="modalKeyInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all-300" readonly>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">值</label>
+                <div class="flex space-x-2 mb-2">
+                    <button id="editModeBtn" class="text-sm px-3 py-1 bg-primary text-white rounded-md hover:bg-primary/90 transition-all-300">
+                        <i class="fa-solid fa-pencil mr-1"></i>编辑
+                    </button>
+                    <button id="formatJsonBtn" class="text-sm px-3 py-1 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-all-300 hidden">
+                        <i class="fa-solid fa-code mr-1"></i>格式化JSON
+                    </button>
+                </div>
+                <textarea id="modalValueInput" rows="15" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all-300" readonly></textarea>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">元信息</label>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-neutral-light rounded-lg p-3">
+                        <div class="text-xs text-gray-500 mb-1">值类型</div>
+                        <div class="font-medium" id="modalValueType">-</div>
+                    </div>
+                    <div class="bg-neutral-light rounded-lg p-3">
+                        <div class="text-xs text-gray-500 mb-1">大小</div>
+                        <div class="font-medium" id="modalValueSize">-</div>
+                    </div>
+                    <div class="bg-neutral-light rounded-lg p-3">
+                        <div class="text-xs text-gray-500 mb-1">创建时间</div>
+                        <div class="font-medium" id="modalCreateTime">-</div>
+                    </div>
+                    <div class="bg-neutral-light rounded-lg p-3">
+                        <div class="text-xs text-gray-500 mb-1">更新时间</div>
+                        <div class="font-medium" id="modalUpdateTime">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="p-6 border-t border-gray-200 flex justify-end space-x-3">
+            <button id="deleteModalBtn" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-all-300 flex items-center">
+                <i class="fa-solid fa-trash mr-2"></i>删除
+            </button>
+            <button id="saveModalBtn" class="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition-all-300 flex items-center hidden">
+                <i class="fa-solid fa-save mr-2"></i>保存
+            </button>
+            <button id="closeModalBtn2" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all-300">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- 加载中提示 -->
+<div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-xl shadow-xl p-6 flex items-center">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+        <div class="ml-4">
+            <div class="text-lg font-medium text-neutral">加载中...</div>
+            <div class="text-sm text-gray-500" id="loadingMessage">请稍候</div>
+        </div>
+    </div>
+</div>
+
+<!-- 消息提示 -->
+<div id="messageToast" class="fixed bottom-4 right-4 max-w-sm w-full bg-white rounded-lg shadow-lg p-4 transform translate-y-20 opacity-0 transition-all duration-300 z-50 flex items-center">
+    <div id="messageIcon" class="w-8 h-8 rounded-full flex items-center justify-center mr-3"></div>
+    <div class="flex-1">
+        <div id="messageTitle" class="font-medium text-neutral"></div>
+        <div id="messageContent" class="text-sm text-gray-500"></div>
+    </div>
+    <button id="closeMessageBtn" class="text-gray-400 hover:text-gray-500 ml-2">
+        <i class="fa-solid fa-times"></i>
+    </button>
+</div>
+
+<script>
+    // 全局变量
+    let currentData = [];
+    let currentPage = 1;
+    let totalPages = 1;
+    let pageSize = 10;
+    let currentKey = "";
+    let editMode = false;
+    let statsChart = null;
+
+    // DOM加载完成后执行
+    document.addEventListener('DOMContentLoaded', function() {
+        // 初始化图表
+        initChart();
+
+        // 设置初始时间
+        updateLastUpdateTime();
+
+        // 绑定事件处理程序
+        bindEventHandlers();
+
+        // 模拟加载初始数据
+        loadSampleData();
+    });
+
+    // 初始化图表
+    function initChart() {
+        const ctx = document.getElementById('statsChart').getContext('2d');
+
+        statsChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['存储大小', 'Region数量', 'TiKV节点'],
+                datasets: [{
+                    data: [30, 40, 30],
+                    backgroundColor: [
+                        '#3B82F6',
+                        '#10B981',
+                        '#F59E0B'
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.label + ': ' + context.raw + '%';
+                            }
+                        }
+                    }
+                },
+                cutout: '70%'
+            }
+        });
+    }
+
+    // 绑定事件处理程序
+    function bindEventHandlers() {
+        // 键值操作按钮
+        document.getElementById('getValueBtn').addEventListener('click', getValue);
+        document.getElementById('setValueBtn').addEventListener('click', setValue);
+        document.getElementById('deleteValueBtn').addEventListener('click', deleteValue);
+
+        // 扫描按钮
+        document.getElementById('scanBtn').addEventListener('click', scanValues);
+
+        // 刷新按钮
+        document.getElementById('refreshBtn').addEventListener('click', refreshData);
+
+        // 模态框按钮
+        document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+        document.getElementById('closeModalBtn2').addEventListener('click', closeModal);
+        document.getElementById('editModeBtn').addEventListener('click', toggleEditMode);
+        document.getElementById('formatJsonBtn').addEventListener('click', formatJson);
+        document.getElementById('saveModalBtn').addEventListener('click', saveValue);
+        document.getElementById('deleteModalBtn').addEventListener('click', deleteCurrentValue);
+
+        // 分页按钮
+        document.getElementById('prevPageBtn').addEventListener('click', prevPage);
+        document.getElementById('nextPageBtn').addEventListener('click', nextPage);
+
+        // 关闭消息提示
+        document.getElementById('closeMessageBtn').addEventListener('click', closeMessage);
+
+        // 搜索和筛选
+        document.getElementById('searchKeyInput').addEventListener('input', filterKeys);
+        document.getElementById('valueTypeSelect').addEventListener('change', filterKeys);
+    }
+
+    // 获取键值
+    function getValue() {
+        const key = document.getElementById('keyInput').value.trim();
+        if (!key) {
+            showMessage('错误', '请输入键', 'error');
+            return;
+        }
+
+        showLoading('正在获取键值...');
+
+        // 模拟API调用
+        setTimeout(() => {
+            hideLoading();
+
+            const sampleData = {
+                key: key,
+                value: JSON.stringify({ name: "测试数据", age: 123, timestamp: new Date().toISOString() }, null, 2),
+                type: "json",
+                size: "128 字节",
+                createTime: "2023-05-10 14:30:22",
+                updateTime: "2023-05-10 15:45:18"
+            };
+
+            openKeyValueModal(sampleData);
+            showMessage('成功', '获取键值成功', 'success');
+        }, 800);
+    }
+
+    // 设置键值
+    function setValue() {
+        const key = document.getElementById('keyInput').value.trim();
+        const value = document.getElementById('valueInput').value.trim();
+
+        if (!key) {
+            showMessage('错误', '请输入键', 'error');
+            return;
+        }
+
+        if (!value) {
+            showMessage('错误', '请输入值', 'error');
+            return;
+        }
+
+        showLoading('正在设置键值...');
+
+        // 模拟API调用
+        setTimeout(() => {
+            hideLoading();
+            showMessage('成功', '键值设置成功', 'success');
+
+            // 清空输入框
+            document.getElementById('keyInput').value = '';
+            document.getElementById('valueInput').value = '';
+
+            // 刷新数据
+            refreshData();
+        }, 800);
+    }
+
+    // 删除键值
+    function deleteValue() {
+        const key = document.getElementById('keyInput').value.trim();
+        if (!key) {
+            showMessage('错误', '请输入键', 'error');
+            return;
+        }
+
+        if (!confirm(`确定要删除键 "${key}" 吗？此操作不可撤销。`)) {
+            return;
+        }
+
+        showLoading('正在删除键值...');
+
+        // 模拟API调用
+        setTimeout(() => {
+            hideLoading();
+            showMessage('成功', '键值删除成功', 'success');
+
+            // 清空输入框
+            document.getElementById('keyInput').value = '';
+            document.getElementById('valueInput').value = '';
+
+            // 刷新数据
+            refreshData();
+        }, 800);
+    }
+
+    // 扫描键值
+    function scanValues() {
+        const startKey = document.getElementById('startKeyInput').value.trim();
+        const endKey = document.getElementById('endKeyInput').value.trim();
+        const limit = parseInt(document.getElementById('limitInput').value);
+
+        showLoading('正在扫描键值...');
+
+        // 模拟API调用
+        setTimeout(() => {
+            hideLoading();
+
+            // 生成模拟数据
+            const sampleData = generateSampleKeyValueData(limit, startKey);
+            currentData = sampleData;
+            currentPage = 1;
+            totalPages = Math.ceil(sampleData.length / pageSize);
+
+            renderKeyValueTable();
+            updatePaginationInfo();
+            updateLastUpdateTime();
+
+            showMessage('成功', `扫描到 ${sampleData.length} 个键值`, 'success');
+        }, 1000);
+    }
+
+    // 刷新数据
+    function refreshData() {
+        const startKey = document.getElementById('startKeyInput').value.trim();
+        const endKey = document.getElementById('endKeyInput').value.trim();
+        const limit = parseInt(document.getElementById('limitInput').value);
+
+        if (currentData.length === 0) {
+            // 如果没有数据，执行扫描
+            scanValues();
+            return;
+        }
+
+        showLoading('正在刷新数据...');
+
+        // 模拟API调用
+        setTimeout(() => {
+            hideLoading();
+
+            // 保持当前页数据
+            renderKeyValueTable();
+            updateLastUpdateTime();
+
+            showMessage('成功', '数据已刷新', 'success');
+        }, 800);
+    }
+
+    // 打开键值模态框
+    function openKeyValueModal(data) {
+        currentKey = data.key;
+
+        document.getElementById('modalKeyInput').value = data.key;
+        document.getElementById('modalValueInput').value = data.value;
+        document.getElementById('modalValueType').textContent = data.type;
+        document.getElementById('modalValueSize').textContent = data.size;
+        document.getElementById('modalCreateTime').textContent = data.createTime;
+        document.getElementById('modalUpdateTime').textContent = data.updateTime;
+
+        // 根据值类型决定是否显示格式化按钮
+        if (data.type === "json") {
+            document.getElementById('formatJsonBtn').classList.remove('hidden');
+        } else {
+            document.getElementById('formatJsonBtn').classList.add('hidden');
+        }
+
+        // 重置编辑模式
+        editMode = false;
+        document.getElementById('modalValueInput').setAttribute('readonly', 'readonly');
+        document.getElementById('editModeBtn').innerHTML = '<i class="fa-solid fa-pencil mr-1"></i>编辑';
+        document.getElementById('saveModalBtn').classList.add('hidden');
+
+        // 显示模态框
+        document.getElementById('keyValueModal').classList.remove('hidden');
+    }
+
+    // 关闭模态框
+    function closeModal() {
+        document.getElementById('keyValueModal').classList.add('hidden');
+        currentKey = "";
+    }
+
+    // 切换编辑模式
+    function toggleEditMode() {
+        const valueInput = document.getElementById('modalValueInput');
+
+        if (editMode) {
+            // 退出编辑模式
+            valueInput.setAttribute('readonly', 'readonly');
+            document.getElementById('editModeBtn').innerHTML = '<i class="fa-solid fa-pencil mr-1"></i>编辑';
+            document.getElementById('saveModalBtn').classList.add('hidden');
+        } else {
+            // 进入编辑模式
+            valueInput.removeAttribute('readonly');
+            document.getElementById('editModeBtn').innerHTML = '<i class="fa-solid fa-eye mr-1"></i>查看';
+            document.getElementById('saveModalBtn').classList.remove('hidden');
+        }
+
+        editMode = !editMode;
+    }
+
+    // 格式化JSON
+    function formatJson() {
+        try {
+            const valueInput = document.getElementById('modalValueInput');
+            const jsonObj = JSON.parse(valueInput.value);
+            valueInput.value = JSON.stringify(jsonObj, null, 2);
+            showMessage('成功', 'JSON已格式化', 'success');
+        } catch (e) {
+            showMessage('错误', 'JSON格式错误，无法格式化', 'error');
+        }
+    }
+
+    // 保存修改的值
+    function saveValue() {
+        if (!currentKey) {
+            showMessage('错误', '没有选择要保存的键', 'error');
+            return;
+        }
+
+        const newValue = document.getElementById('modalValueInput').value;
+
+        showLoading('正在保存键值...');
+
+        // 模拟API调用
+        setTimeout(() => {
+            hideLoading();
+
+            // 更新元信息中的更新时间
+            document.getElementById('modalUpdateTime').textContent = new Date().toLocaleString();
+
+            // 退出编辑模式
+            editMode = false;
+            document.getElementById('modalValueInput').setAttribute('readonly', 'readonly');
+            document.getElementById('editModeBtn').innerHTML = '<i class="fa-solid fa-pencil mr-1"></i>编辑';
+            document.getElementById('saveModalBtn').classList.add('hidden');
+
+            showMessage('成功', '键值已保存', 'success');
+
+            // 刷新数据
+            refreshData();
+        }, 800);
+    }
+
+    // 删除当前选中的键值
+    function deleteCurrentValue() {
+        if (!currentKey) {
+            showMessage('错误', '没有选择要删除的键', 'error');
+            return;
+        }
+
+        if (!confirm(`确定要删除键 "${currentKey}" 吗？此操作不可撤销。`)) {
+            return;
+        }
+
+        showLoading('正在删除键值...');
+
+        // 模拟API调用
+        setTimeout(() => {
+            hideLoading();
+            closeModal();
+            showMessage('成功', '键值已删除', 'success');
+
+            // 刷新数据
+            refreshData();
+        }, 800);
+    }
+
+    // 上一页
+    function prevPage() {
+        if (currentPage > 1) {
+            currentPage--;
+            renderKeyValueTable();
+            updatePaginationInfo();
+        }
+    }
+
+    // 下一页
+    function nextPage() {
+        if (currentPage < totalPages) {
+            currentPage++;
+            renderKeyValueTable();
+            updatePaginationInfo();
+        }
+    }
+
+    // 过滤键
+    function filterKeys() {
+        const searchText = document.getElementById('searchKeyInput').value.toLowerCase().trim();
+        const typeFilter = document.getElementById('valueTypeSelect').value;
+
+        // 如果没有数据，直接返回
+        if (currentData.length === 0) {
+            return;
+        }
+
+        // 重置到第一页
+        currentPage = 1;
+
+        // 过滤数据
+        let filteredData = currentData;
+
+        if (searchText) {
+            filteredData = filteredData.filter(item =>
+                item.key.toLowerCase().includes(searchText) ||
+                item.value.toLowerCase().includes(searchText)
+            );
+        }
+
+        if (typeFilter !== "all") {
+            filteredData = filteredData.filter(item => item.type === typeFilter);
+        }
+
+        // 更新表格和分页
+        totalPages = Math.ceil(filteredData.length / pageSize);
+        renderKeyValueTable(filteredData);
+        updatePaginationInfo(filteredData.length);
+    }
+
+    // 渲染键值表格
+    function renderKeyValueTable(data = null) {
+        const tableBody = document.getElementById('keyValueTableBody');
+        const displayData = data || currentData;
+
+        // 计算当前页的数据
+        const startIndex = (currentPage - 1) * pageSize;
+        const endIndex = Math.min(startIndex + pageSize, displayData.length);
+        const pageData = displayData.slice(startIndex, endIndex);
+
+        // 清空表格
+        tableBody.innerHTML = '';
+
+        // 如果没有数据，显示空状态
+        if (displayData.length === 0) {
+            tableBody.innerHTML = `
+                    <tr class="text-center">
+                        <td colspan="5" class="px-6 py-10 text-gray-500">
+                            <div class="flex flex-col items-center">
+                                <i class="fa-solid fa-database text-4xl mb-3 text-gray-300"></i>
+                                <p>暂无数据</p>
+                                <p class="text-sm mt-1">请使用上方的扫描功能查找键值</p>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            return;
+        }
+
+        // 如果当前页没有数据，尝试上一页
+        if (pageData.length === 0 && currentPage > 1) {
+            currentPage--;
+            renderKeyValueTable(data);
+            return;
+        }
+
+        // 渲染数据
+        pageData.forEach(item => {
+            const valuePreview = item.value.length > 50 ?
+                item.value.substring(0, 50) + "..." :
+                item.value;
+
+            const row = document.createElement('tr');
+            row.className = 'hover:bg-gray-50 transition-all-300';
+
+            row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="font-medium text-neutral">${item.key}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 py-1 text-xs rounded-full ${getTypeBadgeClass(item.type)}">
+                            ${item.type}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="text-gray-500 truncate max-w-md">${valuePreview}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${item.size}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <button class="text-primary hover:text-primary/80 mr-3 view-btn" data-key="${item.key}">
+                            <i class="fa-solid fa-eye"></i> 查看
+                        </button>
+                        <button class="text-red-500 hover:text-red-600 delete-btn" data-key="${item.key}">
+                            <i class="fa-solid fa-trash"></i> 删除
+                        </button>
+                    </td>
+                `;
+
+            tableBody.appendChild(row);
+        });
+
+        // 绑定查看和删除按钮事件
+        document.querySelectorAll('.view-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const key = this.getAttribute('data-key');
+                // 查找对应的数据
+                const item = currentData.find(item => item.key === key);
+                if (item) {
+                    openKeyValueModal(item);
+                }
+            });
+        });
+
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const key = this.getAttribute('data-key');
+                // 设置到输入框
+                document.getElementById('keyInput').value = key;
+                // 调用删除函数
+                deleteValue();
+            });
+        });
+
+        // 更新分页按钮状态
+        updatePaginationButtons();
+    }
+
+    // 获取类型徽章的样式
+    function getTypeBadgeClass(type) {
+        switch (type) {
+            case 'json':
+                return 'bg-blue-100 text-blue-800';
+            case 'string':
+                return 'bg-green-100 text-green-800';
+            case 'number':
+                return 'bg-purple-100 text-purple-800';
+            case 'boolean':
+                return 'bg-yellow-100 text-yellow-800';
+            default:
+                return 'bg-gray-100 text-gray-800';
+        }
+    }
+
+    // 更新分页信息
+    function updatePaginationInfo(totalCount = null) {
+        const count = totalCount !== null ? totalCount : currentData.length;
+        const startIndex = (currentPage - 1) * pageSize + 1;
+        const endIndex = Math.min(startIndex + pageSize - 1, count);
+
+        document.getElementById('paginationInfo').textContent =
+            `显示 ${count > 0 ? startIndex : 0}-${endIndex} 条，共 ${count} 条`;
+    }
+
+    // 更新分页按钮状态
+    function updatePaginationButtons() {
+        const prevBtn = document.getElementById('prevPageBtn');
+        const nextBtn = document.getElementById('nextPageBtn');
+
+        if (currentPage <= 1) {
+            prevBtn.disabled = true;
+            prevBtn.className = 'px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed';
+        } else {
+            prevBtn.disabled = false;
+            prevBtn.className = 'px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all-300';
+        }
+
+        if (currentPage >= totalPages) {
+            nextBtn.disabled = true;
+            nextBtn.className = 'px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed';
+        } else {
+            nextBtn.disabled = false;
+            nextBtn.className = 'px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all-300';
+        }
+    }
+
+    // 更新最后更新时间
+    function updateLastUpdateTime() {
+        const now = new Date();
+        const timeStr = now.toLocaleString();
+        document.getElementById('lastUpdate').textContent = timeStr;
+    }
+
+    // 显示加载中提示
+    function showLoading(message = '加载中...') {
+        document.getElementById('loadingMessage').textContent = message;
+        document.getElementById('loadingOverlay').classList.remove('hidden');
+    }
+
+    // 隐藏加载中提示
+    function hideLoading() {
+        document.getElementById('loadingOverlay').classList.add('hidden');
+    }
+
+    // 显示消息提示
+    function showMessage(title, content, type = 'info') {
+        const messageToast = document.getElementById('messageToast');
+        const messageTitle = document.getElementById('messageTitle');
+        const messageContent = document.getElementById('messageContent');
+        const messageIcon = document.getElementById('messageIcon');
+
+        messageTitle.textContent = title;
+        messageContent.textContent = content;
+
+        // 设置图标和样式
+        switch (type) {
+            case 'success':
+                messageIcon.className = 'w-8 h-8 rounded-full bg-green-100 text-green-800 flex items-center justify-center mr-3';
+                messageIcon.innerHTML = '<i class="fa-solid fa-check"></i>';
+                break;
+            case 'error':
+                messageIcon.className = 'w-8 h-8 rounded-full bg-red-100 text-red-800 flex items-center justify-center mr-3';
+                messageIcon.innerHTML = '<i class="fa-solid fa-exclamation"></i>';
+                break;
+            case 'warning':
+                messageIcon.className = 'w-8 h-8 rounded-full bg-yellow-100 text-yellow-800 flex items-center justify-center mr-3';
+                messageIcon.innerHTML = '<i class="fa-solid fa-exclamation-triangle"></i>';
+                break;
+            default:
+                messageIcon.className = 'w-8 h-8 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center mr-3';
+                messageIcon.innerHTML = '<i class="fa-solid fa-info"></i>';
+        }
+
+        // 显示提示
+        messageToast.classList.remove('translate-y-20', 'opacity-0');
+
+        // 3秒后自动关闭
+        setTimeout(closeMessage, 3000);
+    }
+
+    // 关闭消息提示
+    function closeMessage() {
+        const messageToast = document.getElementById('messageToast');
+        messageToast.classList.add('translate-y-20', 'opacity-0');
+    }
+
+    // 生成模拟键值数据
+    function generateSampleKeyValueData(count, prefix = '') {
+        const data = [];
+        const types = ['string', 'json', 'number', 'boolean'];
+
+        for (let i = 0; i < count; i++) {
+            const key = prefix + `key_${i+1}`;
+            const type = types[Math.floor(Math.random() * types.length)];
+            let value, size;
+
+            switch (type) {
+                case 'string':
+                    value = generateRandomString(30, 100);
+                    break;
+                case 'json':
+                    value = JSON.stringify({
+                        id: i + 1,
+                        name: `item_${i+1}`,
+                        timestamp: new Date().toISOString(),
+                        nested: {
+                            property1: generateRandomString(10, 20),
+                            property2: Math.random() * 100
+                        }
+                    }, null, 2);
+                    break;
+                case 'number':
+                    value = (Math.random() * 1000).toString();
+                    break;
+                case 'boolean':
+                    value = (Math.random() > 0.5).toString();
+                    break;
+            }
+
+            // 计算大小
+            const byteSize = new TextEncoder().encode(value).length;
+            size = formatBytes(byteSize);
+
+            data.push({
+                key: key,
+                value: value,
+                type: type,
+                size: size,
+                createTime: formatDate(new Date(Date.now() - Math.random() * 86400000)), // 随机时间
+                updateTime: formatDate(new Date())
+            });
+        }
+
+        return data;
+    }
+
+    // 生成随机字符串
+    function generateRandomString(minLength, maxLength) {
+        const length = Math.floor(Math.random() * (maxLength - minLength + 1)) + minLength;
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+~`|}{[]:;?><,./-=';
+        let result = '';
+
+        for (let i = 0; i < length; i++) {
+            result += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+
+        return result;
+    }
+
+    // 格式化字节大小
+    function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 Bytes';
+
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    // 格式化日期
+    function formatDate(date) {
+        return date.toLocaleString();
+    }
+
+    // 加载示例数据
+    function loadSampleData() {
+        // 设置一些示例值
+        document.getElementById('startKeyInput').value = 'user_';
+        document.getElementById('keyInput').value = 'user_1';
+        document.getElementById('valueInput').value = JSON.stringify({ name: "张三", age: 30, email: "zhangsan@example.com" }, null, 2);
+
+        // 模拟集群信息
+        document.getElementById('totalKeys').textContent = '1,234,567';
+        document.getElementById('storageSize').textContent = '2.4 GB';
+        document.getElementById('regionCount').textContent = '128';
+        document.getElementById('tikvNodes').textContent = '3';
+        document.getElementById('qps').textContent = '4,567';
+
+        // 更新图表数据
+        statsChart.data.datasets[0].data = [40, 30, 30];
+        statsChart.update();
+    }
+</script>
+</body>
+</html>
