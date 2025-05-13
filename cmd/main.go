@@ -1,10 +1,13 @@
 package main
 
 import (
+	"github.com/gin-gonic/gin"
+	"github.com/writeuper/tikv-viewer/internal/service"
 	"log"
 
 	"github.com/writeuper/tikv-viewer/internal/repository/tikv"
 
+	"github.com/writeuper/tikv-viewer/api/v1"
 	"github.com/writeuper/tikv-viewer/config"
 	"github.com/writeuper/tikv-viewer/pkg/logger"
 )
@@ -34,8 +37,24 @@ func main() {
 	}(client)
 
 	// 初始化服务
-	//tikvService := service.NewTiKVService(client)
+	tikvService := service.NewTiKVService(client)
 
 	// 初始化api
+	tikvAPI := v1.NewTikvAPI(tikvService)
+
+	// 创建gin
+	r := gin.Default()
+
+	// 注册api
+	apiGroup := r.Group("/api/v1/tikv")
+	{
+		apiGroup.GET("/:key", tikvAPI.GetValueHandler)
+		apiGroup.POST("/", tikvAPI.SetValueHandler)
+		apiGroup.DELETE("/:key", tikvAPI.DeleteValueHandler)
+		apiGroup.GET("/:keys", tikvAPI.BatchGetHandler)
+	}
+
+	// 静态文件服务
+	r.Static("/", "./web/dist")
 
 }
