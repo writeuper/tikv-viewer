@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/writeuper/tikv-viewer/internal/service"
 	"log"
+	"net/http"
 
 	"github.com/writeuper/tikv-viewer/internal/repository/tikv"
 
@@ -45,16 +46,26 @@ func main() {
 	// 创建gin
 	r := gin.Default()
 
-	// 注册api
+	// 注册API路由
 	apiGroup := r.Group("/api/v1/tikv")
 	{
 		apiGroup.GET("/:key", tikvAPI.GetValueHandler)
 		apiGroup.POST("/", tikvAPI.SetValueHandler)
 		apiGroup.DELETE("/:key", tikvAPI.DeleteValueHandler)
-		apiGroup.GET("/:keys", tikvAPI.BatchGetHandler)
+		//apiGroup.GET("/scan", tikvAPI.BatchGetHandler)
 	}
 
 	// 静态文件服务
-	r.Static("/", "./web/dist")
+	r.Static("/static", "./web/dist")
 
+	// 根路径重定向到静态首页
+	r.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusFound, "/static/index.html")
+	})
+
+	// 启动服务器
+	l.Infof("Server started on %s", cfg.Server.Port)
+	if err := r.Run(cfg.Server.Port); err != nil && err != http.ErrServerClosed {
+		l.Fatalf("Server failed to start: %v", err)
+	}
 }

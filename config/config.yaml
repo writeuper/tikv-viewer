@@ -1,0 +1,92 @@
+# TiKV Viewer 配置文件
+
+# 服务器配置
+server:
+  host: "0.0.0.0"           # 服务器监听地址
+  port: ":8080"                # 服务器监听端口
+  debug: false              # 是否启用调试模式
+  read_timeout: 30          # 读取超时时间（秒）
+  write_timeout: 30         # 写入超时时间（秒）
+  shutdown_timeout: 10      # 优雅关闭超时时间（秒）
+
+# 日志配置
+logging:
+  level: "info"             # 日志级别：debug, info, warn, error, fatal
+  format: "text"            # 日志格式：text, json
+  output: "stdout"          # 日志输出：stdout, stderr, 或文件路径
+  filename: "tikv-viewer.log"  # 日志文件路径（当output为文件路径时有效）
+  max_size: 100             # 日志文件最大大小（MB）
+  max_age: 7                # 日志文件保留天数
+  max_backups: 3            # 最多保留的旧日志文件数
+
+# TiKV 集群配置
+tikv:
+  pd_endpoints:             # PD 节点地址列表
+    - "127.0.0.1:2379"
+  timeout: 10               # 连接超时时间（秒）
+  max_retries: 3            # 最大重试次数
+  retry_delay: 2            # 重试延迟（秒）
+  security:                 # 安全配置（可选）
+    cert_path: ""           # TLS 证书路径
+    key_path: ""            # TLS 私钥路径
+    ca_path: ""             # CA 证书路径
+
+# API 配置
+api:
+  prefix: "/api/v1"         # API 前缀
+  enable_metrics: true      # 是否启用指标收集
+  metrics_path: "/metrics"  # 指标路径
+  cors:                     # CORS 配置
+    enabled: true
+    allowed_origins:
+      - "*"
+    allowed_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+      - "OPTIONS"
+    allowed_headers:
+      - "Origin"
+      - "Content-Type"
+      - "Accept"
+      - "Authorization"
+    max_age: 86400          # 预检请求缓存时间（秒）
+
+# 安全配置
+security:
+  auth_enabled: false       # 是否启用认证
+  username: "admin"         # 管理员用户名
+  password: "password"      # 管理员密码
+  token_expiration: 24      # JWT 令牌过期时间（小时）
+  secret_key: "your-secret-key"  # JWT 签名密钥
+
+# 静态文件服务配置
+static_files:
+  enabled: true             # 是否启用静态文件服务
+  root_path: "./web/dist"   # 静态文件根目录
+  index_file: "index.html"  # 默认索引文件
+  cache_control: "public, max-age=3600"  # 缓存控制头
+
+# 监控配置
+monitoring:
+  enable_prometheus: true   # 是否启用 Prometheus 监控
+  enable_pprof: true        # 是否启用 pprof 性能分析
+  pprof_path: "/debug/pprof" # pprof 路径
+
+# 缓存配置
+cache:
+  enabled: true             # 是否启用缓存
+  type: "memory"            # 缓存类型：memory, redis
+  max_size: 10000           # 最大缓存项数
+  expiration: 300           # 缓存过期时间（秒）
+  redis:                    # Redis 配置（当type为redis时有效）
+    address: "localhost:6379"
+    password: ""
+    db: 0
+
+# 性能配置
+performance:
+  batch_size: 100           # 批量操作大小
+  scan_limit: 1000          # 扫描操作默认限制
+  max_concurrent_requests: 10  # 最大并发请求数
