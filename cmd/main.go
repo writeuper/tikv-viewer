@@ -52,7 +52,7 @@ func main() {
 		apiGroup.GET("/:key", tikvAPI.GetValueHandler)
 		apiGroup.POST("/", tikvAPI.SetValueHandler)
 		apiGroup.DELETE("/:key", tikvAPI.DeleteValueHandler)
-		//apiGroup.GET("/scan", tikvAPI.BatchGetHandler)
+		apiGroup.POST("/scan", tikvAPI.ScanHandler)
 	}
 
 	// 静态文件服务

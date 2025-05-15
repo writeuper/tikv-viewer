@@ -45,6 +45,10 @@ func (c *Client) BatchPut(ctx context.Context, keys [][]byte, value [][]byte) er
 	return c.client.BatchPut(ctx, keys, value)
 }
 
+func (c *Client) Scan(ctx context.Context, startKey, endKey []byte, limit int) ([][]byte, [][]byte, error) {
+	return c.client.Scan(ctx, startKey, endKey, limit)
+}
+
 func (c *Client) Delete(ctx context.Context, key []byte) error {
 	return c.client.Delete(ctx, key)
 }

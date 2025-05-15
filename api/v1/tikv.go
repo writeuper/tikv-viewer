@@ -95,3 +95,35 @@ func (t *TikvAPI) BatchGetHandler(c *gin.Context) {
 		"count":   len(results), // TODO: count should be the number of valid keys in the request
 	})
 }
+
+func (t *TikvAPI) ScanHandler(c *gin.Context) {
+	var req struct {
+		StartKey string `json:"start_key" binding:"required"`
+		EndKey   string `json:"end_key" binding:"required"`
+		Limit    int    `json:"limit"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid request body", err)
+		return
+	}
+	keys := make([][]byte, req.Limit)
+	values := make([][]byte, req.Limit)
+	keys, values, err := t.service.Scan(c.Request.Context(), []byte(req.StartKey), []byte(req.EndKey), req.Limit)
+	if err != nil {
+		response.InternalServerError(c, "scan failed", err)
+		return
+	}
+
+	results := make([]map[string]string, len(values))
+	for i := range keys {
+		results[i] = map[string]string{
+			"key":   string(keys[i]),
+			"value": string(values[i]),
+		}
+	}
+	response.Success(c, map[string]interface{}{
+		"results": results,
+		"count":   len(results), // TODO: count should be the number of valid keys in the request
+	})
+}

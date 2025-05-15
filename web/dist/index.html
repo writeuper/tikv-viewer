@@ -321,6 +321,7 @@
     let currentKey = "";
     let editMode = false;
     let statsChart = null;
+    const apiBaseUrl = '/api/v1/tikv';
 
     // DOM加载完成后执行
     document.addEventListener('DOMContentLoaded', function() {
@@ -409,7 +410,7 @@
     }
 
     // 获取键值
-    function getValue() {
+    async function getValue() {
         const key = document.getElementById('keyInput').value.trim();
         if (!key) {
             showMessage('错误', '请输入键', 'error');
@@ -418,26 +419,32 @@
 
         showLoading('正在获取键值...');
 
-        // 模拟API调用
-        setTimeout(() => {
-            hideLoading();
-
+        try {
+            const response = await fetch(`${apiBaseUrl}/${key}`);
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+            const data = await response.json();
             const sampleData = {
-                key: key,
-                value: JSON.stringify({ name: "测试数据", age: 123, timestamp: new Date().toISOString() }, null, 2),
-                type: "json",
-                size: "128 字节",
-                createTime: "2023-05-10 14:30:22",
-                updateTime: "2023-05-10 15:45:18"
+                key: data.key,
+                value: data.value,
+                type: getValueType(data.value),
+                size: formatBytes(new TextEncoder().encode(data.value).length),
+                createTime: '-',
+                updateTime: '-'
             };
 
             openKeyValueModal(sampleData);
             showMessage('成功', '获取键值成功', 'success');
-        }, 800);
+        } catch (error) {
+            showMessage('错误', `获取键值失败: ${error.message}`, 'error');
+        } finally {
+            hideLoading();
+        }
     }
 
     // 设置键值
-    function setValue() {
+    async function setValue() {
         const key = document.getElementById('keyInput').value.trim();
         const value = document.getElementById('valueInput').value.trim();
 
@@ -453,9 +460,17 @@
 
         showLoading('正在设置键值...');
 
-        // 模拟API调用
-        setTimeout(() => {
-            hideLoading();
+        try {
+            const response = await fetch(apiBaseUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ key, value })
+            });
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
             showMessage('成功', '键值设置成功', 'success');
 
             // 清空输入框
@@ -464,11 +479,15 @@
 
             // 刷新数据
             refreshData();
-        }, 800);
+        } catch (error) {
+            showMessage('错误', `设置键值失败: ${error.message}`, 'error');
+        } finally {
+            hideLoading();
+        }
     }
 
     // 删除键值
-    function deleteValue() {
+    async function deleteValue() {
         const key = document.getElementById('keyInput').value.trim();
         if (!key) {
             showMessage('错误', '请输入键', 'error');
@@ -481,9 +500,13 @@
 
         showLoading('正在删除键值...');
 
-        // 模拟API调用
-        setTimeout(() => {
-            hideLoading();
+        try {
+            const response = await fetch(`${apiBaseUrl}/${key}`, {
+                method: 'DELETE'
+            });
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
             showMessage('成功', '键值删除成功', 'success');
 
             // 清空输入框
@@ -492,59 +515,135 @@
 
             // 刷新数据
             refreshData();
-        }, 800);
+        } catch (error) {
+            showMessage('错误', `删除键值失败: ${error.message}`, 'error');
+        } finally {
+            hideLoading();
+        }
     }
 
     // 扫描键值
-    function scanValues() {
+    async function scanValues() {
         const startKey = document.getElementById('startKeyInput').value.trim();
         const endKey = document.getElementById('endKeyInput').value.trim();
         const limit = parseInt(document.getElementById('limitInput').value);
 
+        if (!startKey || !endKey) {
+            showMessage('错误', '请输入起始键和结束键', 'error');
+            return;
+        }
+
         showLoading('正在扫描键值...');
 
-        // 模拟API调用
-        setTimeout(() => {
-            hideLoading();
+        try {
+            const response = await fetch(`${apiBaseUrl}/scan`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    start_key: startKey,
+                    end_key: endKey,
+                    limit: limit
+                })
+            });
 
-            // 生成模拟数据
-            const sampleData = generateSampleKeyValueData(limit, startKey);
-            currentData = sampleData;
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+
+            const result = await response.json();
+
+            // 检查响应格式是否符合预期
+            if (!result.data || !result.data.results) {
+                throw new Error('Invalid response format');
+            }
+
+            // 正确解析嵌套在data字段中的结果
+            currentData = result.data.results.map(item => ({
+                key: item.key,
+                value: item.value,
+                type: getValueType(item.value),
+                size: formatBytes(new TextEncoder().encode(item.value).length),
+                createTime: '-',
+                updateTime: '-'
+            }));
+
             currentPage = 1;
-            totalPages = Math.ceil(sampleData.length / pageSize);
+            totalPages = Math.ceil(currentData.length / pageSize);
 
             renderKeyValueTable();
             updatePaginationInfo();
             updateLastUpdateTime();
 
-            showMessage('成功', `扫描到 ${sampleData.length} 个键值`, 'success');
-        }, 1000);
+            showMessage('成功', `扫描到 ${currentData.length} 个键值`, 'success');
+        } catch (error) {
+            showMessage('错误', `扫描键值失败: ${error.message}`, 'error');
+        } finally {
+            hideLoading();
+        }
     }
 
     // 刷新数据
-    function refreshData() {
-        const startKey = document.getElementById('startKeyInput').value.trim();
-        const endKey = document.getElementById('endKeyInput').value.trim();
-        const limit = parseInt(document.getElementById('limitInput').value);
-
+    async function refreshData() {
         if (currentData.length === 0) {
-            // 如果没有数据，执行扫描
             scanValues();
             return;
         }
 
         showLoading('正在刷新数据...');
 
-        // 模拟API调用
-        setTimeout(() => {
-            hideLoading();
+        try {
+            const startKey = document.getElementById('startKeyInput').value.trim();
+            const endKey = document.getElementById('endKeyInput').value.trim();
+            const limit = parseInt(document.getElementById('limitInput').value);
 
-            // 保持当前页数据
+            const response = await fetch(`${apiBaseUrl}/scan`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    start_key: startKey,
+                    end_key: endKey,
+                    limit: limit
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+
+            const result = await response.json();
+
+            // 检查响应格式是否符合预期
+            if (!result.data || !result.data.results) {
+                throw new Error('Invalid response format');
+            }
+
+            // 正确解析嵌套在data字段中的结果
+            currentData = result.data.results.map(item => ({
+                key: item.key,
+                value: item.value,
+                type: getValueType(item.value),
+                size: formatBytes(new TextEncoder().encode(item.value).length),
+                createTime: '-',
+                updateTime: '-'
+            }));
+
+            currentPage = 1;
+            totalPages = Math.ceil(currentData.length / pageSize);
+
             renderKeyValueTable();
+            updatePaginationInfo();
             updateLastUpdateTime();
 
             showMessage('成功', '数据已刷新', 'success');
-        }, 800);
+        } catch (error) {
+            showMessage('错误', `刷新数据失败: ${error.message}`, 'error');
+        } finally {
+            hideLoading();
+        }
     }
 
     // 打开键值模态框
@@ -613,7 +712,7 @@
     }
 
     // 保存修改的值
-    function saveValue() {
+    async function saveValue() {
         if (!currentKey) {
             showMessage('错误', '没有选择要保存的键', 'error');
             return;
@@ -623,9 +722,17 @@
 
         showLoading('正在保存键值...');
 
-        // 模拟API调用
-        setTimeout(() => {
-            hideLoading();
+        try {
+            const response = await fetch(apiBaseUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ key: currentKey, value: newValue })
+            });
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
 
             // 更新元信息中的更新时间
             document.getElementById('modalUpdateTime').textContent = new Date().toLocaleString();
@@ -640,11 +747,15 @@
 
             // 刷新数据
             refreshData();
-        }, 800);
+        } catch (error) {
+            showMessage('错误', `保存键值失败: ${error.message}`, 'error');
+        } finally {
+            hideLoading();
+        }
     }
 
     // 删除当前选中的键值
-    function deleteCurrentValue() {
+    async function deleteCurrentValue() {
         if (!currentKey) {
             showMessage('错误', '没有选择要删除的键', 'error');
             return;
@@ -656,15 +767,23 @@
 
         showLoading('正在删除键值...');
 
-        // 模拟API调用
-        setTimeout(() => {
-            hideLoading();
+        try {
+            const response = await fetch(`${apiBaseUrl}/${currentKey}`, {
+                method: 'DELETE'
+            });
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
             closeModal();
             showMessage('成功', '键值已删除', 'success');
 
             // 刷新数据
             refreshData();
-        }, 800);
+        } catch (error) {
+            showMessage('错误', `删除键值失败: ${error.message}`, 'error');
+        } finally {
+            hideLoading();
+        }
     }
 
     // 上一页
@@ -1023,6 +1142,21 @@
         // 更新图表数据
         statsChart.data.datasets[0].data = [40, 30, 30];
         statsChart.update();
+    }
+
+    // 判断值的类型
+    function getValueType(value) {
+        try {
+            JSON.parse(value);
+            return 'json';
+        } catch (error) {
+            if (!isNaN(value)) {
+                return 'number';
+            } else if (value === 'true' || value === 'false') {
+                return 'boolean';
+            }
+            return 'string';
+        }
     }
 </script>
 </body>

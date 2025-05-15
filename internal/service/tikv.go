@@ -46,4 +46,10 @@ func (s *TiKVService) BatchPut(ctx context.Context, keys [][]byte, value [][]byt
 	return s.repo.BatchPut(ctx, keys, value)
 }
 
+func (s *TiKVService) Scan(ctx context.Context, prefix []byte, endKey []byte, limit int) ([][]byte, [][]byte, error) {
+	l := logger.GetLogger()
+	l.Debugf("Scan for prefix: %s", string(prefix))
+	return s.repo.Scan(ctx, prefix, endKey, limit)
+}
+
 func (s *TiKVService) Close() {}
